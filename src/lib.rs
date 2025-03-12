@@ -103,20 +103,19 @@ fn checksum(data: &[u8]) -> u16 {
     let mut sum = 0u32;
     let mut i = 0;
     while i < data.len() {
-        let mut word = data[i] as u32;
-        i += 1;
-        if i < data.len() {
-            word = (word << 8) | (data[i] as u32);
-            i += 1;
-        }
+        let word = if i + 1 < data.len() {
+            ((data[i] as u32) << 8) | (data[i + 1] as u32)
+        } else {
+            (data[i] as u32) << 8
+        };
         sum = sum.wrapping_add(word);
+        i += if i + 1 < data.len() { 2 } else { 1 };
     }
 
     // 折叠进位
     while sum > 0xFFFF {
         sum = (sum & 0xFFFF) + (sum >> 16);
     }
-
     !sum as u16
 }
 
@@ -163,7 +162,7 @@ mod tests {
         };
 
         loop {
-            let (mut packet, send_len) = builder.build_packet(b"test data").unwrap();
+            let (mut packet, send_len) = builder.build_packet(b"test a1231").unwrap();
             let icmp_packet = MutableEchoRequestPacket::new(&mut packet[..send_len]).unwrap();
             tx.send_to(&icmp_packet, target_ip).unwrap();
             std::thread::sleep(Duration::from_secs(1));
