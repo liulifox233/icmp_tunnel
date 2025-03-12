@@ -1,0 +1,12 @@
+[package]
+name = "icmp_tunnel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.97"
+ed25519-dalek = "2.1.1"
+
+[dev-dependencies]
+pnet = "0.35.0"
+pnet_transport = "0.35.0"
