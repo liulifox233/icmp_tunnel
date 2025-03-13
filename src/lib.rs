@@ -14,13 +14,18 @@ pub enum IcmpTunnelVersion {
 pub struct IcmpTunnelBuilder {
     pub version: IcmpTunnelVersion,
     pub sign_key: SigningKey,
+    report_count: u32,
     icmp_id: u16,
     icmp_seq: u16,
 }
 
 impl IcmpTunnelBuilder {
     /// 创建一个新的ICMP隧道构建器
-    pub fn new(version: i8, icmp_id: u16, sign_key: SigningKey) -> Self {
+    /// version: ICMP隧道版本
+    /// icmp_id: ICMP ID
+    /// report_count: 上报计数
+    /// sign_key: 签名密钥
+    pub fn new(version: i8, icmp_id: u16, report_count: u32, sign_key: SigningKey) -> Self {
         let version = match version {
             1 => IcmpTunnelVersion::V1,
             _ => panic!("Unsupported version: {}", version),
@@ -29,6 +34,7 @@ impl IcmpTunnelBuilder {
         Self {
             version,
             sign_key,
+            report_count,
             icmp_id,
             icmp_seq,
         }
@@ -64,18 +70,13 @@ impl IcmpTunnelBuilder {
         buffer[offset..offset + 2].copy_from_slice(&self.icmp_seq.to_be_bytes());
         offset += 2;
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
         // 构造隧道头 (73字节)
         buffer[offset] = 1; // 版本号
         offset += 1;
         let sign_pos = offset;
         offset += 64; // 预留签名字段
         let timestamp_pos = offset;
-        buffer[offset..offset + 4].copy_from_slice(&(timestamp as u32).to_be_bytes()); // 时间戳
+        buffer[offset..offset + 4].copy_from_slice(&self.report_count.to_be_bytes()); // 上报计数
         offset += 4;
         buffer[offset..offset + 4].copy_from_slice(&(data.len() as u32).to_be_bytes()); // 数据长度
         offset += 4;
@@ -96,10 +97,15 @@ impl IcmpTunnelBuilder {
         let checksum = checksum(&buffer[..offset]);
         buffer[checksum_pos..checksum_pos + 2].copy_from_slice(&checksum.to_be_bytes());
 
-        // 递增序列号
+        // 递增序列号和上报计数
         self.icmp_seq = self.icmp_seq.wrapping_add(1);
+        self.report_count = self.report_count.wrapping_add(1);
 
         Ok((buffer, offset))
+    }
+
+    pub fn get_report_count(&self) -> u32 {
+        self.report_count
     }
 }
 
@@ -137,7 +143,7 @@ mod tests {
         let data = b"test data";
 
         let sign_key = SigningKey::from_bytes(&[0u8; 32]);
-        let mut builder = IcmpTunnelBuilder::new(1, 0, sign_key);
+        let mut builder = IcmpTunnelBuilder::new(1, 0, 0, sign_key);
         let (packet, send_len) = builder.build_packet(data).unwrap();
 
         // 验证ICMP头
@@ -158,7 +164,7 @@ mod tests {
         println!("icpm echo request to target ip:{:#?}", target_ip);
 
         let sign_key = SigningKey::from_bytes(&[0u8; 32]);
-        let mut builder = IcmpTunnelBuilder::new(1, 0, sign_key);
+        let mut builder = IcmpTunnelBuilder::new(1, 0, 0, sign_key);
 
         let protocol = Layer4(TransportProtocol::Ipv4(IpNextHeaderProtocols::Icmp));
         let (mut tx, _) = match transport_channel(4096, protocol) {
