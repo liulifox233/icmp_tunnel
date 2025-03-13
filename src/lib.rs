@@ -72,19 +72,24 @@ impl IcmpTunnelBuilder {
         // 构造隧道头 (73字节)
         buffer[offset] = 1; // 版本号
         offset += 1;
-        buffer[offset..offset + 4].copy_from_slice(&(timestamp as u32).to_be_bytes()); // 时间戳
-        offset += 4;
         let sign_pos = offset;
         offset += 64; // 预留签名字段
-        buffer[offset..offset + 4].copy_from_slice(&(data.len() as u32).to_be_bytes());
+        let timestamp_pos = offset;
+        buffer[offset..offset + 4].copy_from_slice(&(timestamp as u32).to_be_bytes()); // 时间戳
+        offset += 4;
+        buffer[offset..offset + 4].copy_from_slice(&(data.len() as u32).to_be_bytes()); // 数据长度
         offset += 4;
 
         // 添加数据并计算总长度
         buffer[offset..offset + data.len()].copy_from_slice(data);
         offset += data.len();
 
-        // 计算签名
-        let signature = self.sign_key.sign(data).to_bytes();
+        // 计算签名 (timestamp + data_len + data)
+        let signature = self
+            .sign_key
+            .sign(&buffer[timestamp_pos..offset])
+            .to_bytes();
+
         buffer[sign_pos..sign_pos + 64].copy_from_slice(&signature);
 
         // 计算校验和（仅ICMP头+数据部分）
